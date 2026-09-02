@@ -35,10 +35,20 @@ export const projectSchema = z.object({
   description: z.string(),
 });
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_PATTERN = /^[0-9+\-() ]{7,20}$/;
+
 export const resumeDataSchema = z.object({
   name: z.string().min(1, "이름을 입력해 주세요."),
-  phone: z.string().min(1, "연락처를 입력해 주세요."),
-  email: z.string(),
+  phone: z
+    .string()
+    .min(1, "연락처를 입력해 주세요.")
+    .refine((v) => PHONE_PATTERN.test(v), {
+      message: "올바른 연락처 형식이 아닙니다. (숫자, -, +, 공백만 가능)",
+    }),
+  email: z.string().refine((v) => v === "" || EMAIL_PATTERN.test(v), {
+    message: "올바른 이메일 형식이 아닙니다.",
+  }),
   birth: z.string(),
   address: z.string(),
   photo: z.string(),

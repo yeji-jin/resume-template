@@ -24,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 import ResumeForm from "@/components/resume/ResumeForm";
 import ResumePreview from "@/components/resume/ResumePreview";
 import SlotBar from "@/components/resume/SlotBar";
@@ -50,6 +51,7 @@ export default function ResumePage() {
   const form = useForm<ResumeData>({
     resolver: zodResolver(resumeDataSchema),
     defaultValues: emptyResume,
+    mode: "onBlur",
   });
 
   const active: ResumeSlot | null =
@@ -234,15 +236,18 @@ export default function ResumePage() {
     <FormProvider {...form}>
       <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
         {/* 헤더 */}
-        <div className="mb-5">
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <FileText className="text-primary" size={24} />
-            이력서 작성
-          </h1>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-            필드를 채우고 템플릿을 골라 PDF로 내보내세요.
-            <SaveIndicator saving={saving} savedAt={savedAt} />
-          </p>
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <FileText className="text-primary" size={24} />
+              이력서 작성
+            </h1>
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+              필드를 채우고 템플릿을 골라 PDF로 내보내세요.
+              <SaveIndicator saving={saving} savedAt={savedAt} />
+            </p>
+          </div>
+          <ThemeToggle />
         </div>
 
         {/* 이력서 슬롯 */}

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { ChevronLeft, Check, Download, Loader2, ImageDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Select,
   SelectContent,
@@ -114,6 +115,7 @@ export default function ResumePreview({
           PDF 미리보기
         </span>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           {/* 품질 옵션 */}
           <Select value={quality} onValueChange={(v) => setQuality(v as Quality)}>
             <SelectTrigger className="h-[38px]" aria-label="출력 품질">

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   Controller,
   useFieldArray,
@@ -8,7 +8,23 @@ import {
   useWatch,
   type Control,
 } from "react-hook-form";
-import { Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Trash2, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -58,8 +74,12 @@ export default function ResumeForm() {
                 {...register("phone")}
               />
             </Field>
-            <Field label="이메일">
-              <Input placeholder="example@email.com" {...register("email")} />
+            <Field label="이메일" error={errors.email?.message}>
+              <Input
+                placeholder="example@email.com"
+                aria-invalid={!!errors.email}
+                {...register("email")}
+              />
             </Field>
             <Field label="생년월일">
               <Input placeholder="1997.04.25" {...register("birth")} />
@@ -92,10 +112,12 @@ export default function ResumeForm() {
         }
       >
         {experiences.fields.length === 0 && <EmptyHint />}
-        <div className="space-y-5">
-          {experiences.fields.map((field, i) => (
+        <SortableSection
+          items={experiences.fields}
+          onReorder={experiences.move}
+          renderItem={(field, i) => (
             <ItemCard
-              key={field.fieldId}
+              id={field.fieldId}
               index={i}
               total={experiences.fields.length}
               onMove={(dir) => experiences.move(i, i + dir)}
@@ -117,8 +139,8 @@ export default function ResumeForm() {
                 <Textarea rows={4} {...register(`experiences.${i}.description`)} />
               </Field>
             </ItemCard>
-          ))}
-        </div>
+          )}
+        />
       </FormSection>
 
       {/* 학력 */}
@@ -138,10 +160,12 @@ export default function ResumeForm() {
         }
       >
         {educations.fields.length === 0 && <EmptyHint />}
-        <div className="space-y-5">
-          {educations.fields.map((field, i) => (
+        <SortableSection
+          items={educations.fields}
+          onReorder={educations.move}
+          renderItem={(field, i) => (
             <ItemCard
-              key={field.fieldId}
+              id={field.fieldId}
               index={i}
               total={educations.fields.length}
               onMove={(dir) => educations.move(i, i + dir)}
@@ -173,8 +197,8 @@ export default function ResumeForm() {
                 </div>
               </div>
             </ItemCard>
-          ))}
-        </div>
+          )}
+        />
       </FormSection>
 
       {/* 보유 스킬 */}
@@ -230,10 +254,12 @@ export default function ResumeForm() {
         }
       >
         {projects.fields.length === 0 && <EmptyHint />}
-        <div className="space-y-5">
-          {projects.fields.map((field, i) => (
+        <SortableSection
+          items={projects.fields}
+          onReorder={projects.move}
+          renderItem={(field, i) => (
             <ItemCard
-              key={field.fieldId}
+              id={field.fieldId}
               index={i}
               total={projects.fields.length}
               onMove={(dir) => projects.move(i, i + dir)}
@@ -256,8 +282,8 @@ export default function ResumeForm() {
                 <Textarea rows={3} {...register(`projects.${i}.description`)} />
               </Field>
             </ItemCard>
-          ))}
-        </div>
+          )}
+        />
       </FormSection>
     </div>
   );
@@ -347,22 +373,82 @@ function FormSection({
   );
 }
 
+/** 경력/학력/프로젝트 목록에 드래그 앤 드롭 순서 변경을 적용하는 컨테이너 */
+function SortableSection<T extends { fieldId: string }>({
+  items,
+  onReorder,
+  renderItem,
+}: {
+  items: T[];
+  onReorder: (from: number, to: number) => void;
+  renderItem: (item: T, index: number) => ReactNode;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = items.findIndex((item) => item.fieldId === active.id);
+    const newIndex = items.findIndex((item) => item.fieldId === over.id);
+    if (oldIndex !== -1 && newIndex !== -1) onReorder(oldIndex, newIndex);
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext
+        items={items.map((item) => item.fieldId)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-5">
+          {items.map((item, i) => (
+            <Fragment key={item.fieldId}>{renderItem(item, i)}</Fragment>
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
 function ItemCard({
+  id,
   index,
   total,
   onMove,
   onRemove,
   children,
 }: {
+  id: string;
   index: number;
   total: number;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
   children: ReactNode;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+
   return (
-    <div className="relative rounded-xl border bg-muted/40 p-5 pt-12">
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`relative rounded-xl border bg-muted/40 p-5 pt-12 ${
+        isDragging ? "z-10 opacity-80 shadow-lg" : ""
+      }`}
+    >
       <div className="absolute right-3 top-3 flex items-center gap-1">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="flex h-8 w-8 cursor-grab items-center justify-center rounded-lg text-muted-foreground touch-none active:cursor-grabbing"
+          aria-label="드래그하여 순서 변경"
+        >
+          <GripVertical size={16} />
+        </button>
         <Button
           type="button"
           variant="ghost"
