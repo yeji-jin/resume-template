@@ -2,6 +2,8 @@
 
 브라우저에서 바로 이력서를 작성하고, 템플릿을 골라 PDF/PNG로 내보낼 수 있는 프로젝트
 
+**데모**: [https://resume-template-ashy-alpha.vercel.app/](https://resume-template-ashy-alpha.vercel.app/)
+
 ## 주요 기능
 
 - **폼 작성**: 인적사항, 자기소개, 경력, 학력, 스킬, 프로젝트를 항목 추가/삭제/순서 변경하며 작성
