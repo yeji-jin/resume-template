@@ -39,7 +39,7 @@ export default function ResumePreview({
   const safeName = () => (data.name || "resume").replace(/[\\/:*?"<>|]/g, "");
 
   async function capture() {
-    const { default: html2canvas } = await import("html2canvas");
+    const { default: html2canvas } = await import("html2canvas-pro");
     return html2canvas(sheetRef.current as HTMLElement, {
       scale: quality === "high" ? 3 : 2,
       useCORS: true,
@@ -64,16 +64,17 @@ export default function ResumePreview({
 
       let remaining = imgH;
       let position = 0;
-      const imgData = canvas.toDataURL("image/jpeg", 0.98);
+      // PNG(무손실)로 압축 — JPEG는 옅은 배경색/1px 테두리 같은 저대비 요소가 뭉개짐
+      const imgData = canvas.toDataURL("image/png");
 
-      pdf.addImage(imgData, "JPEG", 0, position, pageW, imgH);
+      pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
       remaining -= pageH;
 
       // 한 페이지를 넘기면 같은 이미지를 음수 오프셋으로 이어 붙여 페이지 분할
       while (remaining > 0) {
         position -= pageH;
         pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, position, pageW, imgH);
+        pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
         remaining -= pageH;
       }
 
