@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePDF } from "@react-pdf/renderer";
 import { ChevronLeft, Check, Download, Loader2, ImageDown } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,9 @@ import {
 } from "@/components/ui/select";
 import type { ResumeData, TemplateId } from "@/lib/resume/types";
 import { TEMPLATES } from "@/lib/resume/types";
-import { PAGE_WIDTH, ResumeTemplate } from "@/lib/resume/templates";
+import { ResumeDocument, registerResumeFonts } from "@/lib/resume/templates";
+
+registerResumeFonts();
 
 type Quality = "normal" | "high";
 
@@ -31,75 +34,33 @@ export default function ResumePreview({
   onTemplateChange,
   onBack,
 }: Props) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const [downloading, setDownloading] = useState(false);
   const [savingImg, setSavingImg] = useState(false);
   const [quality, setQuality] = useState<Quality>("normal");
+  const document = useMemo(
+    () => <ResumeDocument data={data} templateId={templateId} />,
+    [data, templateId],
+  );
+  const [pdf, updatePdf] = usePDF();
+
+  useEffect(() => {
+    updatePdf(document);
+  }, [document, updatePdf]);
+
+  const ready = Boolean(pdf.blob && pdf.url && !pdf.loading && !pdf.error);
+  const busy = pdf.loading || savingImg;
 
   const safeName = () => (data.name || "resume").replace(/[\\/:*?"<>|]/g, "");
 
-  async function capture() {
-    const { default: html2canvas } = await import("html2canvas-pro");
-    return html2canvas(sheetRef.current as HTMLElement, {
-      scale: quality === "high" ? 3 : 2,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      windowWidth: PAGE_WIDTH,
-    });
-  }
-
-  async function handleDownload() {
-    if (!sheetRef.current || downloading) return;
-    setDownloading(true);
-    try {
-      const [canvas, { jsPDF }] = await Promise.all([
-        capture(),
-        import("jspdf").then((m) => m),
-      ]);
-
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgH = (canvas.height * pageW) / canvas.width;
-
-      let remaining = imgH;
-      let position = 0;
-      // PNG(무손실)로 압축 — JPEG는 옅은 배경색/1px 테두리 같은 저대비 요소가 뭉개짐
-      const imgData = canvas.toDataURL("image/png");
-
-      pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
-      remaining -= pageH;
-
-      // 한 페이지를 넘기면 같은 이미지를 음수 오프셋으로 이어 붙여 페이지 분할
-      while (remaining > 0) {
-        position -= pageH;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
-        remaining -= pageH;
-      }
-
-      pdf.save(`${safeName()}_이력서.pdf`);
-    } catch (err) {
-      console.error(err);
-      toast.error("PDF 생성 중 오류가 발생했습니다. 다시 시도해 주세요.");
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   async function handlePng() {
-    if (!sheetRef.current || savingImg) return;
+    if (!pdf.blob || !ready || busy) return;
     setSavingImg(true);
     try {
-      const canvas = await capture();
-      const url = canvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${safeName()}_이력서.png`;
-      a.click();
-    } catch (err) {
-      console.error(err);
-      toast.error("이미지 저장 중 오류가 발생했습니다.");
+      const { pdfToPng, downloadBlob } = await import("@/lib/resume/pdf");
+      const blob = await pdfToPng(pdf.blob, quality === "high" ? 4 : 8 / 3);
+      downloadBlob(blob, `${safeName()}_이력서.png`);
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "이미지 저장 중 오류가 발생했습니다.");
     } finally {
       setSavingImg(false);
     }
@@ -109,7 +70,7 @@ export default function ResumePreview({
     <div className="flex flex-col">
       {/* 상단 툴바 */}
       <div className="flex items-center justify-between border-b bg-background px-5 py-3">
-        <Button type="button" variant="ghost" onClick={onBack}>
+        <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
           <ChevronLeft size={18} /> 이전페이지
         </Button>
         <span className="hidden text-sm font-semibold text-foreground sm:block">
@@ -118,9 +79,9 @@ export default function ResumePreview({
         <div className="flex items-center gap-2">
           <ThemeToggle />
           {/* 품질 옵션 */}
-          <Select value={quality} onValueChange={(v) => setQuality(v as Quality)}>
-            <SelectTrigger className="h-[38px]" aria-label="출력 품질">
-              <SelectValue />
+          <Select disabled={busy} value={quality} onValueChange={(v) => setQuality(v as Quality)}>
+            <SelectTrigger className="h-[38px]" aria-label="PNG 출력 품질">
+              <SelectValue>{quality === "normal" ? "PNG 일반 화질" : "PNG 고화질"}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="normal">일반 화질</SelectItem>
@@ -128,7 +89,7 @@ export default function ResumePreview({
             </SelectContent>
           </Select>
           {/* PNG */}
-          <Button type="button" variant="outline" onClick={handlePng} disabled={savingImg}>
+          <Button type="button" variant="outline" onClick={handlePng} disabled={busy || !ready}>
             {savingImg ? (
               <Loader2 size={15} className="animate-spin" />
             ) : (
@@ -137,13 +98,19 @@ export default function ResumePreview({
             <span className="hidden sm:inline">PNG</span>
           </Button>
           {/* PDF */}
-          <Button type="button" onClick={handleDownload} disabled={downloading}>
-            {downloading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Download size={16} />
-            )}
-            {downloading ? "생성 중…" : "PDF 다운로드"}
+          <Button
+            type="button"
+            disabled={!ready}
+            onClick={() => {
+              if (!pdf.url) return;
+              const link = window.document.createElement("a");
+              link.href = pdf.url;
+              link.download = `${safeName()}_이력서.pdf`;
+              link.click();
+            }}
+          >
+            {pdf.loading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {pdf.loading ? "생성 중…" : "PDF 다운로드"}
           </Button>
         </div>
       </div>
@@ -162,6 +129,8 @@ export default function ResumePreview({
                 <li key={tpl.id}>
                   <button
                     type="button"
+                    aria-pressed={selected}
+                    disabled={busy}
                     onClick={() => onTemplateChange(tpl.id)}
                     className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all ${
                       selected
@@ -191,12 +160,20 @@ export default function ResumePreview({
         </aside>
 
         {/* 미리보기 영역 */}
-        <div className="flex-1 overflow-auto rounded-2xl bg-muted p-4 sm:p-8">
-          <div className="mx-auto w-fit shadow-xl ring-1 ring-black/5">
-            <div ref={sheetRef}>
-              <ResumeTemplate templateId={templateId} data={data} />
-            </div>
-          </div>
+        <div className="min-w-0 flex-1 overflow-auto rounded-2xl bg-muted p-4 sm:p-8">
+          <p role="status" className="mb-4 text-sm text-muted-foreground">
+            {pdf.error ? "PDF를 만들지 못했습니다. 내용을 수정하거나 템플릿을 다시 선택해 주세요."
+              : ready ? "A4 PDF 미리보기" : "PDF를 만들고 있습니다…"}
+          </p>
+          {ready && pdf.url && (
+            <iframe
+              key={pdf.url}
+              src={`${pdf.url}#toolbar=0&navpanes=0`}
+              title="이력서 PDF 미리보기"
+              data-pdf-template={ready ? templateId : undefined}
+              className="mx-auto h-[80vh] min-h-[720px] w-full max-w-[850px] rounded bg-white shadow-xl ring-1 ring-black/5"
+            />
+          )}
         </div>
       </div>
     </div>

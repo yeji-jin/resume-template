@@ -1,714 +1,254 @@
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
+import { Document, Font, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { ResumeData, TemplateId } from "./types";
 import { formatPeriod, totalCareerLabel } from "./utils";
 
-/** A4 너비(96dpi 기준 794px). 높이는 내용에 따라 늘어남 */
-export const PAGE_WIDTH = 794;
-
-interface TemplateProps {
-  data: ResumeData;
+/** Browser URLs by default; an absolute directory can be supplied by Node tests. */
+export function registerResumeFonts(base = "/fonts") {
+  Font.register({
+    family: "Resume Sans KR",
+    fonts: [
+      { src: `${base}/ResumeSansKR-Regular.ttf`, fontWeight: 400 },
+      { src: `${base}/ResumeSansKR-Bold.ttf`, fontWeight: 700 },
+    ],
+  });
+  Font.registerHyphenationCallback((word) => [word]);
 }
 
-function contactLine(data: ResumeData): string {
-  return [data.phone, data.email, data.birth, data.address]
-    .filter(Boolean)
-    .join("   |   ");
+const styles = StyleSheet.create({
+  page: { fontFamily: "Resume Sans KR", fontSize: 10.5, color: "#262626", padding: 42, lineHeight: 1.7, backgroundColor: "#ffffff" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: 14, borderBottomWidth: 0.7, borderBottomColor: "#d4d4d4", marginBottom: 20 },
+  name: { fontSize: 27, fontWeight: 700, lineHeight: 1.4 },
+  contact: { fontSize: 9, color: "#737373", marginTop: 8 },
+  photo: { width: 66, height: 84, objectFit: "cover", borderRadius: 4, marginLeft: 16 },
+  section: { marginBottom: 20 },
+  heading: { fontSize: 13, fontWeight: 700, marginBottom: 10, paddingBottom: 6, borderBottomWidth: 0.5, borderBottomColor: "#e5e5e5" },
+  item: { marginBottom: 15 },
+  itemHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
+  itemTitle: { fontSize: 11.5, fontWeight: 700, flexGrow: 1, flexShrink: 1 },
+  period: { fontSize: 8.5, color: "#8a8a8a", flexShrink: 0, paddingTop: 2 },
+  detail: { fontSize: 9.5, color: "#737373", marginTop: 2 },
+  body: { fontSize: 10.5, lineHeight: 1.85, color: "#525252", marginTop: 5 },
+  footer: { position: "absolute", bottom: 14, right: 30, fontSize: 8, color: "#a3a3a3" },
+  sidebarBackground: { position: "absolute", top: 0, bottom: 0, left: 0, width: 195, backgroundColor: "#1f2937" },
+  columns: { flexDirection: "row", alignItems: "flex-start" },
+  sidebar: { width: 195, paddingHorizontal: 21, color: "#ffffff" },
+  main: { width: 400.28, paddingHorizontal: 27 },
+  sideLabel: { fontSize: 8, color: "#a3a3a3", marginTop: 12, marginBottom: 2 },
+  sideValue: { fontSize: 9.5, color: "#f5f5f5", lineHeight: 1.6 },
+  skillRow: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 5 },
+  timeline: { borderLeftWidth: 1.5, borderLeftColor: "#e5e5e5", paddingLeft: 16, marginLeft: 5 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: { backgroundColor: "#e8edf6", borderRadius: 12, color: "#1e3a8a", paddingHorizontal: 9, paddingVertical: 3, fontSize: 9.5 },
+  tableRow: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: "#d4d4d4", borderLeftWidth: 0.5, borderLeftColor: "#d4d4d4" },
+  cell: { padding: 7, borderRightWidth: 0.5, borderRightColor: "#d4d4d4", fontSize: 9.5 },
+  tableHead: { backgroundColor: "#f5f5f5", borderTopWidth: 0.5, borderTopColor: "#d4d4d4", fontWeight: 700 },
+});
+
+const join = (parts: (string | undefined)[]) => parts.filter(Boolean).join(" · ");
+const contact = (data: ResumeData) => [data.phone, data.email, data.birth, data.address].filter(Boolean).join("   |   ");
+const educationDetail = (edu: ResumeData["educations"][number]) => join([edu.degree, edu.status, edu.gpa && `학점 ${edu.gpa}`]);
+
+function Heading({ children, templateId }: { children: ReactNode; templateId: TemplateId }) {
+  const variant = templateId === "professional"
+    ? { color: "#1f2937", borderBottomColor: "#ff6000", borderBottomWidth: 1.5 }
+    : templateId === "modern"
+      ? { color: "#64748b", fontSize: 10, letterSpacing: 1.5, borderBottomWidth: 0 }
+      : templateId === "simple"
+        ? { color: "#737373", fontSize: 9, letterSpacing: 1.5, borderBottomWidth: 0 }
+        : {};
+  return <Text style={[styles.heading, variant]} minPresenceAhead={65}>{children}</Text>;
 }
 
-function skillText(data: ResumeData): string {
-  return data.skills.map((s) => `${s.name}(${s.level})`).join(" · ");
-}
-
-/* ───────────────────────── 1. 깔끔한 (clean) ───────────────────────── */
-function CleanTemplate({ data }: TemplateProps) {
-  const career = totalCareerLabel(data);
+function Section({ title, templateId, children }: { title: string; templateId: TemplateId; children: ReactNode }) {
   return (
-    <div
-      style={{ width: PAGE_WIDTH }}
-      className="bg-white px-14 py-14 font-sans text-[#262626]"
-    >
-      <div className="flex items-start justify-between gap-6 border-b border-neutral-300 pb-4">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight">
-            {data.name || "이름을 입력하세요"}
-          </h1>
-          <div className="mt-3 text-sm text-neutral-500">
-            {contactLine(data)}
-          </div>
-        </div>
-        {data.photo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={data.photo}
-            alt=""
-            className="h-28 w-[88px] shrink-0 rounded-md object-cover"
-          />
-        )}
-      </div>
-
-      {data.summary && (
-        <Section title="자기소개">
-          <p className="text-[15px] leading-7 text-neutral-700">
-            {data.summary}
-          </p>
-        </Section>
-      )}
-
-      {data.experiences.length > 0 && (
-        <Section title={`경력${career ? ` (${career})` : ""}`}>
-          <div className="space-y-6">
-            {data.experiences.map((exp) => (
-              <div key={exp.id}>
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-base font-bold">{exp.company}</h3>
-                  <span className="text-sm text-neutral-400">
-                    {formatPeriod(exp.start, exp.end)}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-neutral-500">
-                  {[exp.team, exp.role].filter(Boolean).join(" · ")}
-                </p>
-                {exp.description && (
-                  <p className="mt-2 whitespace-pre-line text-[15px] leading-7 text-neutral-700">
-                    {exp.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {data.educations.length > 0 && (
-        <Section title="학력">
-          <div className="space-y-4">
-            {data.educations.map((edu) => (
-              <div key={edu.id}>
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-base font-bold">
-                    {edu.school} {edu.major}
-                  </h3>
-                  <span className="text-sm text-neutral-400">
-                    {formatPeriod(edu.start, edu.end)}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-neutral-500">
-                  {[edu.degree, edu.status, edu.gpa && `학점 ${edu.gpa}`]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {data.skills.length > 0 && (
-        <Section title="보유 스킬">
-          <p className="text-[15px] text-neutral-700">{skillText(data)}</p>
-        </Section>
-      )}
-
-      {data.projects.length > 0 && (
-        <Section title="프로젝트">
-          <div className="space-y-5">
-            {data.projects.map((prj) => (
-              <div key={prj.id}>
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-base font-bold">{prj.name}</h3>
-                  <span className="text-sm text-neutral-400">
-                    {formatPeriod(prj.start, prj.end)}
-                  </span>
-                </div>
-                {prj.description && (
-                  <p className="mt-2 whitespace-pre-line text-[15px] leading-7 text-neutral-700">
-                    {prj.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-    </div>
+    <View style={styles.section}>
+      <Heading templateId={templateId}>{title}</Heading>
+      {children}
+    </View>
   );
-
-  function Section({ title, children }: { title: string; children: ReactNode }) {
-    return (
-      <section className="mt-8">
-        <h2 className="mb-3 border-b border-neutral-200 pb-2.5 text-lg font-bold leading-snug">
-          {title}
-        </h2>
-        {children}
-      </section>
-    );
-  }
 }
 
-/* ──────────────────── 2. 프로페셔널 (professional) ──────────────────── */
-function ProfessionalTemplate({ data }: TemplateProps) {
-  const career = totalCareerLabel(data);
-  return (
-    <div
-      style={{ width: PAGE_WIDTH }}
-      className="flex min-h-[400px] bg-white font-sans text-[#262626]"
-    >
-      {/* 좌측 사이드 */}
-      <aside className="w-[260px] shrink-0 bg-[#1f2937] px-7 py-12 text-white">
-        {data.photo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={data.photo}
-            alt=""
-            className="mb-5 h-32 w-28 rounded-lg object-cover ring-2 ring-white/20"
-          />
-        )}
-        <h1 className="text-3xl font-bold leading-tight">
-          {data.name || "이름"}
-        </h1>
-        <div className="mt-8 space-y-3 text-[13px] text-neutral-300">
-          {data.phone && <SideItem label="연락처" value={data.phone} />}
-          {data.email && <SideItem label="이메일" value={data.email} />}
-          {data.birth && <SideItem label="생년월일" value={data.birth} />}
-          {data.address && <SideItem label="주소" value={data.address} />}
-        </div>
-
-        {data.skills.length > 0 && (
-          <div className="mt-10">
-            <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-[#FF8a4c]">
-              Skills
-            </h2>
-            <ul className="space-y-2 text-[13px] text-neutral-200">
-              {data.skills.map((s) => (
-                <li key={s.id} className="flex justify-between">
-                  <span>{s.name}</span>
-                  <span className="text-neutral-400">{s.level}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </aside>
-
-      {/* 우측 본문 */}
-      <div className="flex-1 px-9 py-12">
-        {data.summary && (
-          <RightSection title="자기소개">
-            <p className="text-[14px] leading-7 text-neutral-700">
-              {data.summary}
-            </p>
-          </RightSection>
-        )}
-
-        {data.experiences.length > 0 && (
-          <RightSection title={`경력${career ? ` · ${career}` : ""}`}>
-            <div className="space-y-5">
-              {data.experiences.map((exp) => (
-                <div key={exp.id}>
-                  <div className="flex items-baseline justify-between">
-                    <h3 className="text-[15px] font-bold">{exp.company}</h3>
-                    <span className="text-xs text-neutral-400">
-                      {formatPeriod(exp.start, exp.end)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-neutral-500">
-                    {[exp.team, exp.role].filter(Boolean).join(" · ")}
-                  </p>
-                  {exp.description && (
-                    <p className="mt-2 whitespace-pre-line text-[13.5px] leading-7 text-neutral-700">
-                      {exp.description}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </RightSection>
-        )}
-
-        {data.educations.length > 0 && (
-          <RightSection title="학력">
-            <div className="space-y-3">
-              {data.educations.map((edu) => (
-                <div key={edu.id} className="flex items-baseline justify-between">
-                  <div>
-                    <h3 className="text-[15px] font-bold">
-                      {edu.school} {edu.major}
-                    </h3>
-                    <p className="text-xs text-neutral-500">
-                      {[edu.degree, edu.status, edu.gpa && `학점 ${edu.gpa}`]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </div>
-                  <span className="text-xs text-neutral-400">
-                    {formatPeriod(edu.start, edu.end)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </RightSection>
-        )}
-
-        {data.projects.length > 0 && (
-          <RightSection title="프로젝트">
-            <div className="space-y-4">
-              {data.projects.map((prj) => (
-                <div key={prj.id}>
-                  <div className="flex items-baseline justify-between">
-                    <h3 className="text-[15px] font-bold">{prj.name}</h3>
-                    <span className="text-xs text-neutral-400">
-                      {formatPeriod(prj.start, prj.end)}
-                    </span>
-                  </div>
-                  {prj.description && (
-                    <p className="mt-1 whitespace-pre-line text-[13.5px] leading-7 text-neutral-700">
-                      {prj.description}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </RightSection>
-        )}
-      </div>
-    </div>
-  );
-
-  function SideItem({ label, value }: { label: string; value: string }) {
-    return (
-      <div>
-        <p className="text-[11px] uppercase tracking-wider text-neutral-500">
-          {label}
-        </p>
-        <p className="text-[13px] text-neutral-100">{value}</p>
-      </div>
-    );
-  }
-
-  function RightSection({ title, children }: { title: string; children: ReactNode }) {
-    return (
-      <section className="mb-7">
-        <h2 className="mb-3 text-base font-bold text-[#1f2937]">
-          <span className="inline-block border-b-2 border-[#FF6000] pb-1.5 leading-snug">
-            {title}
-          </span>
-        </h2>
-        {children}
-      </section>
-    );
-  }
-}
-
-/* ─────────────────────── 3. 정형 이력서 (formal) ─────────────────────── */
-function FormalTemplate({ data }: TemplateProps) {
-  return (
-    <div
-      style={{ width: PAGE_WIDTH }}
-      className="bg-white px-12 py-12 font-sans text-[#262626]"
-    >
-      <h1 className="mb-6 text-center text-3xl font-bold tracking-[0.4em]">
-        이력서
-      </h1>
-
-      <div className="flex gap-4">
-        <table className="flex-1 border-collapse text-sm">
-          <tbody>
-            <tr>
-              <Th>성명</Th>
-              <Td>{data.name}</Td>
-              <Th>생년월일</Th>
-              <Td>{data.birth}</Td>
-            </tr>
-            <tr>
-              <Th>연락처</Th>
-              <Td>{data.phone}</Td>
-              <Th>이메일</Th>
-              <Td>{data.email}</Td>
-            </tr>
-            <tr>
-              <Th>주소</Th>
-              <td className="border border-neutral-300 px-3 py-2" colSpan={3}>
-                {data.address}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div className="flex h-[120px] w-[96px] shrink-0 items-center justify-center overflow-hidden border border-neutral-300 bg-neutral-50 text-xs text-neutral-400">
-          {data.photo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.photo} alt="" className="h-full w-full object-cover" />
-          ) : (
-            "사진"
-          )}
-        </div>
-      </div>
-
-      {data.educations.length > 0 && (
-        <FormalBlock title="학력사항">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-neutral-50">
-                <Th>기간</Th>
-                <Th>학교명</Th>
-                <Th>전공</Th>
-                <Th>구분</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.educations.map((edu) => (
-                <tr key={edu.id}>
-                  <Td>{formatPeriod(edu.start, edu.end)}</Td>
-                  <Td>{edu.school}</Td>
-                  <Td>{edu.major}</Td>
-                  <Td>{[edu.degree, edu.status].filter(Boolean).join(" / ")}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </FormalBlock>
-      )}
-
-      {data.experiences.length > 0 && (
-        <FormalBlock title="경력사항">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-neutral-50">
-                <Th>기간</Th>
-                <Th>회사명</Th>
-                <Th>담당업무</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.experiences.map((exp) => (
-                <tr key={exp.id}>
-                  <Td>{formatPeriod(exp.start, exp.end)}</Td>
-                  <Td>{exp.company}</Td>
-                  <td className="border border-neutral-300 px-3 py-2 align-top">
-                    <p className="font-medium">
-                      {[exp.team, exp.role].filter(Boolean).join(" · ")}
-                    </p>
-                    {exp.description && (
-                      <p className="mt-1 whitespace-pre-line text-[13px] leading-6 text-neutral-600">
-                        {exp.description}
-                      </p>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </FormalBlock>
-      )}
-
-      {data.skills.length > 0 && (
-        <FormalBlock title="보유 기술">
-          <p className="px-1 py-2 text-sm text-neutral-700">{skillText(data)}</p>
-        </FormalBlock>
-      )}
-
-      {data.summary && (
-        <FormalBlock title="자기소개서">
-          <p className="whitespace-pre-line px-1 py-2 text-sm leading-7 text-neutral-700">
-            {data.summary}
-          </p>
-        </FormalBlock>
-      )}
-
-      {data.projects.length > 0 && (
-        <FormalBlock title="프로젝트">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-neutral-50">
-                <Th>기간</Th>
-                <Th>프로젝트명</Th>
-                <Th>내용</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.projects.map((prj) => (
-                <tr key={prj.id}>
-                  <Td>{formatPeriod(prj.start, prj.end)}</Td>
-                  <Td>{prj.name}</Td>
-                  <td className="border border-neutral-300 px-3 py-2 align-top text-[13px] leading-6 text-neutral-600">
-                    {prj.description}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </FormalBlock>
-      )}
-    </div>
-  );
-
-  function Th({ children }: { children?: ReactNode }) {
-    return (
-      <th className="w-[110px] border border-neutral-300 bg-neutral-100 px-3 py-2 text-left font-semibold text-neutral-600">
-        {children}
-      </th>
-    );
-  }
-  function Td({ children }: { children?: ReactNode }) {
-    return (
-      <td className="border border-neutral-300 px-3 py-2 align-top">{children}</td>
-    );
-  }
-  function FormalBlock({ title, children }: { title: string; children: ReactNode }) {
-    return (
-      <div className="mt-7">
-        <h2 className="mb-2 text-base font-bold">{title}</h2>
-        {children}
-      </div>
-    );
-  }
-}
-
-/* ─────────────────────────── 4. 모던 (modern) ─────────────────────────── */
-function ModernTemplate({ data }: TemplateProps) {
-  const career = totalCareerLabel(data);
-  return (
-    <div
-      style={{ width: PAGE_WIDTH }}
-      className="bg-white px-14 py-14 font-sans text-[#1e293b]"
-    >
-      <header className="flex items-center justify-between gap-6">
-        <div className="border-l-4 border-[#1e3a8a] pl-5">
-          <h1 className="text-4xl font-extrabold tracking-tight text-[#1e3a8a]">
-            {data.name || "이름"}
-          </h1>
-          <p className="mt-2 text-sm text-neutral-500">{contactLine(data)}</p>
-        </div>
-        {data.photo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={data.photo}
-            alt=""
-            className="h-24 w-24 shrink-0 rounded-full object-cover ring-4 ring-[#1e3a8a]/10"
-          />
-        )}
-      </header>
-
-      {data.summary && (
-        <p className="mt-7 text-[15px] leading-7 text-neutral-700">{data.summary}</p>
-      )}
-
-      {data.experiences.length > 0 && (
-        <ModernSection title={`EXPERIENCE${career ? ` · ${career}` : ""}`}>
-          <div className="relative ml-2 border-l-2 border-neutral-200 pl-6">
-            {data.experiences.map((exp) => (
-              <div key={exp.id} className="relative mb-7 last:mb-0">
-                <span className="absolute -left-[31px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[#1e3a8a]" />
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-base font-bold">{exp.company}</h3>
-                  <span className="text-xs font-medium text-[#1e3a8a]">
-                    {formatPeriod(exp.start, exp.end)}
-                  </span>
-                </div>
-                <p className="text-sm text-neutral-500">
-                  {[exp.team, exp.role].filter(Boolean).join(" · ")}
-                </p>
-                {exp.description && (
-                  <p className="mt-2 whitespace-pre-line text-[14px] leading-7 text-neutral-700">
-                    {exp.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </ModernSection>
-      )}
-
-      {data.educations.length > 0 && (
-        <ModernSection title="EDUCATION">
-          <div className="space-y-3">
-            {data.educations.map((edu) => (
-              <div key={edu.id} className="flex items-baseline justify-between">
-                <div>
-                  <h3 className="text-base font-bold">
-                    {edu.school} {edu.major}
-                  </h3>
-                  <p className="text-sm text-neutral-500">
-                    {[edu.degree, edu.status, edu.gpa && `학점 ${edu.gpa}`]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </div>
-                <span className="text-xs font-medium text-[#1e3a8a]">
-                  {formatPeriod(edu.start, edu.end)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </ModernSection>
-      )}
-
-      {data.skills.length > 0 && (
-        <ModernSection title="SKILLS">
-          <div className="flex flex-wrap gap-2">
-            {data.skills.map((s) => (
-              <span
-                key={s.id}
-                className="rounded-full bg-[#1e3a8a]/10 px-3 py-1 text-sm font-medium text-[#1e3a8a]"
-              >
-                {s.name} · {s.level}
-              </span>
-            ))}
-          </div>
-        </ModernSection>
-      )}
-
-      {data.projects.length > 0 && (
-        <ModernSection title="PROJECTS">
-          <div className="space-y-4">
-            {data.projects.map((prj) => (
-              <div key={prj.id}>
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-base font-bold">{prj.name}</h3>
-                  <span className="text-xs font-medium text-[#1e3a8a]">
-                    {formatPeriod(prj.start, prj.end)}
-                  </span>
-                </div>
-                {prj.description && (
-                  <p className="mt-1 whitespace-pre-line text-[14px] leading-7 text-neutral-700">
-                    {prj.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </ModernSection>
-      )}
-    </div>
-  );
-
-  function ModernSection({ title, children }: { title: string; children: ReactNode }) {
-    return (
-      <section className="mt-8">
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-neutral-400">
-          {title}
-        </h2>
-        {children}
-      </section>
-    );
-  }
-}
-
-/* ─────────────────────────── 5. 심플 (simple) ─────────────────────────── */
-function SimpleTemplate({ data }: TemplateProps) {
-  const career = totalCareerLabel(data);
-  return (
-    <div
-      style={{ width: PAGE_WIDTH }}
-      className="bg-white px-16 py-16 font-sans text-[#333]"
-    >
-      <h1 className="text-3xl font-semibold">{data.name || "이름"}</h1>
-      <p className="mt-2 text-[13px] text-neutral-400">{contactLine(data)}</p>
-
-      {data.summary && (
-        <p className="mt-8 text-[15px] leading-8 text-neutral-600">{data.summary}</p>
-      )}
-
-      {data.experiences.length > 0 && (
-        <SimpleSection title={`경력${career ? ` (${career})` : ""}`}>
-          {data.experiences.map((exp) => (
-            <div key={exp.id} className="mb-5 last:mb-0">
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-[15px] font-semibold">{exp.company}</h3>
-                <span className="text-xs text-neutral-400">
-                  {formatPeriod(exp.start, exp.end)}
-                </span>
-              </div>
-              <p className="text-[13px] text-neutral-400">
-                {[exp.team, exp.role].filter(Boolean).join(" · ")}
-              </p>
-              {exp.description && (
-                <p className="mt-1.5 whitespace-pre-line text-[14px] leading-7 text-neutral-600">
-                  {exp.description}
-                </p>
-              )}
-            </div>
-          ))}
-        </SimpleSection>
-      )}
-
-      {data.educations.length > 0 && (
-        <SimpleSection title="학력">
-          {data.educations.map((edu) => (
-            <div key={edu.id} className="mb-2 flex items-baseline justify-between last:mb-0">
-              <span className="text-[14px]">
-                {edu.school} {edu.major}
-                <span className="text-neutral-400">
-                  {" "}
-                  {[edu.degree, edu.status].filter(Boolean).join(" · ")}
-                </span>
-              </span>
-              <span className="text-xs text-neutral-400">
-                {formatPeriod(edu.start, edu.end)}
-              </span>
-            </div>
-          ))}
-        </SimpleSection>
-      )}
-
-      {data.skills.length > 0 && (
-        <SimpleSection title="스킬">
-          <p className="text-[14px] text-neutral-600">{skillText(data)}</p>
-        </SimpleSection>
-      )}
-
-      {data.projects.length > 0 && (
-        <SimpleSection title="프로젝트">
-          {data.projects.map((prj) => (
-            <div key={prj.id} className="mb-4 last:mb-0">
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-[15px] font-semibold">{prj.name}</h3>
-                <span className="text-xs text-neutral-400">
-                  {formatPeriod(prj.start, prj.end)}
-                </span>
-              </div>
-              {prj.description && (
-                <p className="mt-1 whitespace-pre-line text-[14px] leading-7 text-neutral-600">
-                  {prj.description}
-                </p>
-              )}
-            </div>
-          ))}
-        </SimpleSection>
-      )}
-    </div>
-  );
-
-  function SimpleSection({ title, children }: { title: string; children: ReactNode }) {
-    return (
-      <section className="mt-9">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">
-          {title}
-        </h2>
-        {children}
-      </section>
-    );
-  }
-}
-
-/* ─────────────────────────── 디스패처 ─────────────────────────── */
-export function ResumeTemplate({
-  templateId,
-  data,
-}: {
-  templateId: TemplateId;
-  data: ResumeData;
+/** React PDF keeps this header with the first lines; long descriptions remain
+ * breakable. Never set wrap={false} on an arbitrarily long description. */
+function Entry({ title, period, detail, description, modern = false }: {
+  title: string; period: string; detail?: string; description?: string; modern?: boolean;
 }) {
-  switch (templateId) {
-    case "professional":
-      return <ProfessionalTemplate data={data} />;
-    case "formal":
-      return <FormalTemplate data={data} />;
-    case "modern":
-      return <ModernTemplate data={data} />;
-    case "simple":
-      return <SimpleTemplate data={data} />;
-    case "clean":
-    default:
-      return <CleanTemplate data={data} />;
-  }
+  return (
+    <View style={modern ? [styles.item, styles.timeline] : styles.item}>
+      <View wrap={false} minPresenceAhead={description ? 48 : 0}>
+        <View style={styles.itemHeader}>
+          <Text style={styles.itemTitle}>{title}</Text>
+          <Text style={styles.period}>{period}</Text>
+        </View>
+        {detail && <Text style={styles.detail}>{detail}</Text>}
+      </View>
+      {description && <Text style={styles.body} orphans={2} widows={2}>{description}</Text>}
+    </View>
+  );
+}
+
+function ResumeHeader({ data, templateId }: { data: ResumeData; templateId: TemplateId }) {
+  return (
+    <View style={[styles.header, templateId === "simple" || templateId === "modern" ? { borderBottomWidth: 0 } : {}]} wrap={false}>
+      <View style={{ flex: 1, ...(templateId === "modern" ? { borderLeftWidth: 3, borderLeftColor: "#1e3a8a", paddingLeft: 15 } : {}) }}>
+        <Text style={[styles.name, templateId === "modern" ? { color: "#1e3a8a" } : {}]}>{data.name || "이름"}</Text>
+        <Text style={styles.contact}>{contact(data)}</Text>
+      </View>
+      {data.photo && templateId !== "simple" && (
+        // eslint-disable-next-line jsx-a11y/alt-text
+        <Image src={data.photo} style={[styles.photo, templateId === "modern" ? { width: 72, height: 72, borderRadius: 36 } : {}]} />
+      )}
+    </View>
+  );
+}
+
+function BodySections({ data, templateId }: { data: ResumeData; templateId: TemplateId }) {
+  const career = totalCareerLabel(data);
+  const modern = templateId === "modern";
+  return (
+    <>
+      {data.summary && (
+        <Section title="자기소개" templateId={templateId}>
+          <Text style={styles.body} orphans={2} widows={2}>{data.summary}</Text>
+        </Section>
+      )}
+      {data.experiences.length > 0 && (
+        <Section title={`${modern ? "EXPERIENCE" : "경력"}${career ? ` · ${career}` : ""}`} templateId={templateId}>
+          {data.experiences.map((exp) => <Entry key={exp.id} title={exp.company} period={formatPeriod(exp.start, exp.end)} detail={join([exp.team, exp.role])} description={exp.description} modern={modern} />)}
+        </Section>
+      )}
+      {data.educations.length > 0 && (
+        <Section title={modern ? "EDUCATION" : "학력"} templateId={templateId}>
+          {data.educations.map((edu) => <Entry key={edu.id} title={join([edu.school, edu.major])} period={formatPeriod(edu.start, edu.end)} detail={educationDetail(edu)} />)}
+        </Section>
+      )}
+      {data.skills.length > 0 && templateId !== "professional" && (
+        <Section title={modern ? "SKILLS" : "보유 스킬"} templateId={templateId}>
+          {modern ? (
+            <View style={styles.chips}>
+              {data.skills.map((skill) => <Text key={skill.id} style={styles.chip} wrap={false}>{skill.name} · {skill.level}</Text>)}
+            </View>
+          ) : <Text style={styles.body}>{data.skills.map((skill) => `${skill.name}(${skill.level})`).join(" · ")}</Text>}
+        </Section>
+      )}
+      {data.projects.length > 0 && (
+        <Section title={modern ? "PROJECTS" : "프로젝트"} templateId={templateId}>
+          {data.projects.map((project) => <Entry key={project.id} title={project.name} period={formatPeriod(project.start, project.end)} description={project.description} />)}
+        </Section>
+      )}
+    </>
+  );
+}
+
+function Professional({ data }: { data: ResumeData }) {
+  return (
+    <>
+      <View style={styles.sidebarBackground} fixed />
+      <View style={styles.columns}>
+        <View style={styles.sidebar}>
+          <View wrap={false}>
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            {data.photo && <Image src={data.photo} style={{ width: 84, height: 96, objectFit: "cover", borderRadius: 5, marginBottom: 15 }} />}
+            <Text style={[styles.name, { fontSize: 24 }]}>{data.name || "이름"}</Text>
+          </View>
+          {[["연락처", data.phone], ["이메일", data.email], ["생년월일", data.birth], ["주소", data.address]].map(([label, value]) => value && (
+            <View key={label}>
+              <Text style={styles.sideLabel} minPresenceAhead={24}>{label}</Text>
+              <Text style={styles.sideValue}>{value}</Text>
+            </View>
+          ))}
+          {data.skills.length > 0 && (
+            <View style={{ marginTop: 26 }}>
+              <Text style={{ fontSize: 11, fontWeight: 700, color: "#ff8a4c", marginBottom: 10 }} minPresenceAhead={30}>SKILLS</Text>
+              {data.skills.map((skill) => (
+                <View key={skill.id} style={styles.skillRow} wrap={false}>
+                  <Text style={[styles.sideValue, { flex: 1 }]}>{skill.name}</Text>
+                  <Text style={{ fontSize: 9, color: "#a3a3a3" }}>{skill.level}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+        <View style={styles.main}>
+          <BodySections data={data} templateId="professional" />
+        </View>
+      </View>
+    </>
+  );
+}
+
+function TableRow({ cells, widths, header = false }: { cells: string[]; widths: number[]; header?: boolean }) {
+  return (
+    <View style={header ? [styles.tableRow, styles.tableHead] : styles.tableRow} wrap={!header} minPresenceAhead={header ? 36 : 0}>
+      {cells.map((cell, index) => (
+        <View key={index} style={[styles.cell, { width: `${widths[index]}%` }]}>
+          <Text orphans={2} widows={2}>{cell}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function Formal({ data }: { data: ResumeData }) {
+  return (
+    <>
+      <Text style={[styles.name, { textAlign: "center", letterSpacing: 8, marginBottom: 20 }]} minPresenceAhead={110}>이력서</Text>
+      <View style={{ flexDirection: "row", gap: 12, marginBottom: 22 }} wrap={false}>
+        <View style={{ flex: 1, borderTopWidth: 0.5, borderTopColor: "#d4d4d4" }}>
+          <TableRow cells={["성명", data.name, "생년월일", data.birth]} widths={[15, 35, 20, 30]} />
+          <TableRow cells={["연락처", data.phone, "이메일", data.email]} widths={[15, 35, 20, 30]} />
+          <TableRow cells={["주소", data.address]} widths={[15, 85]} />
+        </View>
+        <View style={{ width: 72, height: 90, borderWidth: 0.5, borderColor: "#d4d4d4", alignItems: "center", justifyContent: "center" }}>
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          {data.photo ? <Image src={data.photo} style={{ width: 71, height: 89, objectFit: "cover" }} /> : <Text style={styles.detail}>사진</Text>}
+        </View>
+      </View>
+      {data.educations.length > 0 && (
+        <Section title="학력사항" templateId="formal">
+          <TableRow cells={["기간", "학교명", "전공", "구분"]} widths={[25, 25, 25, 25]} header />
+          {data.educations.map((edu) => <TableRow key={edu.id} cells={[formatPeriod(edu.start, edu.end), edu.school, edu.major, educationDetail(edu)]} widths={[25, 25, 25, 25]} />)}
+        </Section>
+      )}
+      {data.experiences.length > 0 && (
+        <Section title="경력사항" templateId="formal">
+          <TableRow cells={["기간", "회사명", "담당업무"]} widths={[23, 23, 54]} header />
+          {data.experiences.map((exp) => <TableRow key={exp.id} cells={[formatPeriod(exp.start, exp.end), exp.company, [join([exp.team, exp.role]), exp.description].filter(Boolean).join("\n")]} widths={[23, 23, 54]} />)}
+        </Section>
+      )}
+      {data.skills.length > 0 && (
+        <Section title="보유 기술" templateId="formal">
+          <Text style={styles.body}>{data.skills.map((skill) => `${skill.name}(${skill.level})`).join(" · ")}</Text>
+        </Section>
+      )}
+      {data.summary && (
+        <Section title="자기소개서" templateId="formal">
+          <Text style={styles.body} orphans={2} widows={2}>{data.summary}</Text>
+        </Section>
+      )}
+      {data.projects.length > 0 && (
+        <Section title="프로젝트" templateId="formal">
+          <TableRow cells={["기간", "프로젝트명", "내용"]} widths={[23, 23, 54]} header />
+          {data.projects.map((project) => <TableRow key={project.id} cells={[formatPeriod(project.start, project.end), project.name, project.description]} widths={[23, 23, 54]} />)}
+        </Section>
+      )}
+    </>
+  );
+}
+
+export function ResumeDocument({ data, templateId }: { data: ResumeData; templateId: TemplateId }) {
+  return (
+    <Document title={`${data.name || "이력서"}_이력서`} author={data.name} language="ko">
+      <Page size="A4" wrap style={[styles.page, templateId === "professional" ? { paddingHorizontal: 0, paddingVertical: 36 } : templateId === "simple" ? { padding: 48 } : {}]}>
+        {templateId === "professional" ? <Professional data={data} /> : templateId === "formal" ? <Formal data={data} /> : (
+          <>
+            <ResumeHeader data={data} templateId={templateId} />
+            <BodySections data={data} templateId={templateId} />
+          </>
+        )}
+        <Text style={styles.footer} fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
+      </Page>
+    </Document>
+  );
 }
